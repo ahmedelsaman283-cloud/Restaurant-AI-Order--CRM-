@@ -1,0 +1,2368 @@
+{
+  "name": "Restaurant Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "options": {
+          "systemMessage": "You are an assistant for a restaurant. Your only job is to classify the customer's message into exactly ONE of the following 4 categories. Do not reply to the customer or explain anything — return only the category name.\n\nCategories:\n\n1. order — The message is a request to place a NEW order (e.g. \"عايز أطلب\", \"عندكم برجر؟\", \"عايز اوردر توصيل\")\n\n2. cancel_modify — The message is a request to cancel or change an EXISTING order (e.g. \"عايز ألغي الأوردر\", \"غيّر الأوردر بتاعي\", \"ضيف حاجة على طلبي\")\n\n3. questions — A general question about the restaurant not related to placing/changing an order (e.g. \"مواعيد الشغل ايه؟\", \"فين العنوان؟\")\n\n4. general — Any other message (greetings, thanks, unclear messages)\n\nRules:\n- If the conversation history shows the assistant just asked the customer for missing order details (name, address, items), classify a short follow-up reply as the SAME category as that ongoing request.\n- Respond with ONLY the category name: order, cancel_modify, questions, or general\n- No explanation, no punctuation, no extra text\n- If ambiguous, default to \"general\"\n- Respond in the same language the customer used."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        320,
+        2400
+      ],
+      "id": "22bab82e-05c5-4dfe-9e60-3fe5969e972b",
+      "name": "AI Agent (Classifier)",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        224,
+        2256
+      ],
+      "id": "df95a9a1-3b0f-42cd-9ce2-c3d3c722a886",
+      "name": "OpenRouter Chat Model (Classifier)",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('WhatsApp Normalizer').item.json.message.chat.id }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        464,
+        2272
+      ],
+      "id": "ab6d0570-1f52-42e4-a284-97d9f09fa8a4",
+      "name": "Simple Memory (Classifier)"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "order",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cond-order"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "order"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "cancel_modify",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cond-cancel"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancel_modify"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "questions",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cond-questions"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "questions"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "general",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cond-general"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "general"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        640,
+        2400
+      ],
+      "id": "ad410367-e845-41b1-afb5-8f3a9cf6d497",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "order-prompt-id",
+              "name": "system prompt",
+              "value": "The customer wants to place a NEW order.\n\nIf the message includes a system note with the current date/time, always treat it as the true current date/time — never rely on your own assumption of what today's date is.\n\n1. Use \"Search Menu\" to help answer any questions about available items, prices, or ingredients based on what the customer asks. Never guess menu items or prices — always verify using this tool.\n\n2. Collect the following details before finalizing the order:\n   - Customer's full name\n   - Delivery address\n   - Phone number (use the number they are messaging from if not stated otherwise)\n   - The items they want to order (with quantities)\n\n3. While collecting details, the customer may change their mind before confirming — they might add an item, remove one, change a quantity, or swap one item for another. Update your running summary of the order accordingly and don't restart the whole conversation; just acknowledge the change naturally and continue.\n\n4. Once you have all the details, calculate the total price based on menu items, and read back the FULL current order (reflecting any changes made) to the customer for confirmation before saving it.\n\n5. Only after the customer explicitly confirms the order as read back, use \"Save Order\" to record it with status = \"new\". If the customer changes something AFTER you already read it back for confirmation, re-confirm the updated version before saving — never save based on an outdated summary.\n\n6. Confirm to the customer with a warm message including the total price and estimated preparation time.\n\nIMPORTANT: This agent only handles orders that have NOT been saved yet. If the customer wants to change or cancel an order that was already confirmed and saved earlier, that is handled by a different flow — do not attempt to modify saved orders here.\n\nSTYLE GUIDANCE: Ask for missing details in a warm, natural, conversational tone — not a numbered checklist. Reply in the same language the customer used.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        960,
+        2080
+      ],
+      "id": "f01d7e87-4807-4375-b960-007b34a9ec28",
+      "name": "order prompt"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cancel-prompt-id",
+              "name": "system prompt",
+              "value": "The customer wants to CANCEL or MODIFY an existing order.\n\n1. Ask for their phone number if not already known (use the number they are messaging from if unclear).\n2. Use \"Search Order\" to find their most recent order.\n3. If no order is found, politely inform them.\n4. Check the order's status field:\n   - If status is \"out_for_delivery\" or \"delivered\": politely inform the customer that the order has already been dispatched and cannot be changed or cancelled through this system — suggest they call the restaurant directly for urgent help.\n   - If status is \"new\" or \"preparing\": proceed with the requested cancellation or modification.\n5. Use \"Update Order\" to apply the change (set status to \"cancelled\", or update the items/address fields as requested).\n6. Confirm the change with the customer in a warm, clear message.\n\nNever modify or cancel an order that has already been dispatched or delivered. Reply in the same language the customer used.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        960,
+        2320
+      ],
+      "id": "22a2ff89-5398-4ad3-be03-ad9e0fc01520",
+      "name": "cancel_modify prompt"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "questions-prompt-id",
+              "name": "system prompt",
+              "value": "The customer is asking a general question about the restaurant, or having a casual conversation — not placing, cancelling, or modifying an order.\n\nRespond naturally and helpfully based on the following restaurant information:\n- Working hours: [عدّل هنا مواعيد العمل الفعلية]\n- Location: [عدّل هنا العنوان الفعلي]\n- Delivery available: [عدّل هنا نعم/لا ومنطقة التوصيل]\n\nIf the customer asks something you don't have accurate information about, don't guess — politely let them know staff will follow up.\n\nIf during the conversation the customer expresses interest in ordering, gently guide them, but do not attempt to place the order yourself in this step.\n\nKeep your tone warm, friendly, and concise. Reply in the same language the customer used.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        944,
+        2672
+      ],
+      "id": "0e021857-ab91-4411-ae24-d2eaed374d36",
+      "name": "questions/general prompt"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('WhatsApp Normalizer').item.json.message.chat.id }}",
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        1392,
+        1872
+      ],
+      "id": "b7795b36-202f-4521-937a-58110625ae13",
+      "name": "Simple Memory (Main)"
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        1824
+      ],
+      "id": "d9f38bc6-b07c-4b4f-939c-86531ddc56e6",
+      "name": "OpenRouter Chat Model (Main)",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=   {{ $('WhatsApp Normalizer').item.json.message.text }}",
+        "options": {
+          "systemMessage": "={{ $json['system prompt'] }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1328,
+        2272
+      ],
+      "id": "4b25fec6-0958-40f9-a75f-b5653a6cc7d1",
+      "name": "AI Agent (Main)",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to look up menu items, prices, and descriptions. Search by item name or category keyword.",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "الورقة1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        1552,
+        1872
+      ],
+      "id": "efdedc0b-96f2-423f-bb36-2092ff7b5678",
+      "name": "Search Menu",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to save a new confirmed customer order. Provide customer_name, customer_phone, delivery_address, items (with quantities), and total_price. Only call this after reading back the full order to the customer and getting their explicit confirmation. Always set status to \"new\".",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 865390911,
+          "mode": "list",
+          "cachedResultName": "الورقة2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=865390911"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('order_id', ``, 'string') }}",
+            "customer_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('customer_name', ``, 'string') }}",
+            "customer_phone": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('customer_phone', ``, 'string') }}",
+            "delivery_address": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('delivery_address', ``, 'string') }}",
+            "items": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('items', ``, 'string') }}",
+            "total_price": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('total_price', ``, 'string') }}",
+            "status": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('status', ``, 'string') }}",
+            "created_at": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('created_at', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customer_phone",
+              "displayName": "customer_phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "delivery_address",
+              "displayName": "delivery_address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "items",
+              "displayName": "items",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_price",
+              "displayName": "total_price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        1728,
+        1792
+      ],
+      "id": "18673d9f-4caf-4c86-bb48-4138ae867cab",
+      "name": "Save Order",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to find an existing order by the customer's phone number, to check its status before cancelling or modifying.",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 865390911,
+          "mode": "list",
+          "cachedResultName": "الورقة2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=865390911"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        1904,
+        1824
+      ],
+      "id": "ab92749f-0ebd-465e-98b7-edb8a810ff16",
+      "name": "Search Order",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to update an existing order's status only (e.g. set to \"cancelled\"). You must know the order's order_id first (get it from \"Search Order\"). This tool currently CANNOT change the items or delivery address — status only.",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 865390911,
+          "mode": "list",
+          "cachedResultName": "الورقة2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=865390911"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('status', ``, 'string') }}",
+            "order_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('order_id__using_to_match_', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "order_id"
+          ],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "customer_phone",
+              "displayName": "customer_phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "delivery_address",
+              "displayName": "delivery_address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "items",
+              "displayName": "items",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "total_price",
+              "displayName": "total_price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        2048,
+        1888
+      ],
+      "id": "ee2bb4f8-beca-4af3-8a3c-74966b7b6f78",
+      "name": "Update Order",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "={{ $('WhatsApp Normalizer').item.json.message.chat.id }}",
+        "textBody": "={{ $json.output }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2112,
+        2288
+      ],
+      "id": "fc041585-88c7-4a12-b051-730d6502f4aa",
+      "name": "Send a text message",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-flash-lite-latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        336,
+        2256
+      ],
+      "id": "b02d7158-332a-4935-957b-2eba3c2a1e98",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-flash-lite-latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        1792
+      ],
+      "id": "46ef38f5-bf7b-44b6-b92d-779b7a01ba2c",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const binary = items[i].binary && items[i].binary.data;\n  if (!binary) {\n    throw new Error('No binary audio data found on this item.');\n  }\n  const buffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n  results.push({\n    json: {\n      audio_base64: buffer.toString('base64'),\n      chat_id: $('WhatsApp Normalizer').item.json.message.chat.id\n    }\n  });\n}\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        2640
+      ],
+      "id": "990548c2-3321-4643-862c-621cbf4cc5df",
+      "name": "Extract Base64 Audio"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [ { parts: [ { text: \"Transcribe the following voice message exactly as spoken, in the original language and dialect (Egyptian Arabic if applicable). Return ONLY the transcribed text with no extra commentary, quotes, or formatting.\" }, { inline_data: { mime_type: \"audio/ogg\", data: $json.audio_base64 } } ] } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        2624
+      ],
+      "id": "7f555461-ac7e-48ee-aa92-52f19e5979b0",
+      "name": "Transcribe with Gemini",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('WhatsApp Normalizer').first().json.message.chat.id;\nconst candidate = $json.candidates && $json.candidates[0];\nconst part = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];\nconst transcript = (part && part.text) ? part.text.trim() : '';\n\nconst today = new Date();\nconst todayStr = today.toISOString().slice(0, 10);\nconst dayName = today.toLocaleDateString('ar-EG', { weekday: 'long' });\n\nconst combinedText = `(ملحوظة للنظام: تاريخ النهاردة الحقيقي هو ${todayStr} - ${dayName})\\n\\n${transcript}`;\n\nreturn [{\n  json: {\n    message: {\n      chat: { id: chatId },\n      text: combinedText\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        2624
+      ],
+      "id": "2e971cdc-d856-4421-aa04-14180d486e60",
+      "name": "Normalize Voice Text"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.photo }}",
+                    "rightValue": "={{ $json.message.photo }}",
+                    "operator": {
+                      "type": "array",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "id": "16071e77-3b64-413f-94c5-a4ed96083592"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "photo"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f7a23cf2-fd0e-45a6-9b5f-a63a1da6f1f4",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "={{ $json.message.text }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9b1ac056-794e-43ce-b0fe-c36ebdc6429b",
+                    "leftValue": "={{ $json.message.voice }}",
+                    "rightValue": "={{ $json.message.voice }}",
+                    "operator": {
+                      "type": "object",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "voice"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -320,
+        2576
+      ],
+      "id": "2e4d1770-23b3-42eb-90df-6bf446d8aae4",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const binary = items[i].binary && items[i].binary.data;\n  if (!binary) {\n    throw new Error('No binary audio data found on this item.');\n  }\n  const buffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n  results.push({\n    json: {\n      audio_base64: buffer.toString('base64'),\n      chat_id: $('WhatsApp Normalizer').item.json.message.chat.id\n    }\n  });\n}\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        2320
+      ],
+      "id": "182c0acc-9228-47b2-a9bf-58fa4b4fdc26",
+      "name": "Extract Base64 Audio1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [ { parts: [ { text: \"This image was sent by a customer to a restaurant via chat. Write a short description (2-4 sentences) of what the image shows, in Egyptian Arabic dialect, focusing on anything relevant to the restaurant: food, offers, menu items, receipts, addresses, or any visible text (transcribe important text if present). Write the description as if it were the customer's own message explaining what they want or asking about, so another system can understand their intent and respond. Return ONLY the description, with no extra commentary.\" }, { inline_data: { mime_type: \"image/jpeg\", data: $json.audio_base64 } } ] } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        2224
+      ],
+      "id": "244b1040-6db7-4c87-9055-ac604f7aae90",
+      "name": "Transcribe with Gemini1",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('WhatsApp Normalizer').first().json.message.chat.id;\nconst candidate = $json.candidates && $json.candidates[0];\nconst part = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];\nconst description = (part && part.text) ? part.text.trim() : '';\n\nconst caption = $('WhatsApp Normalizer').first().json.message.caption || '';\n\nconst today = new Date();\nconst todayStr = today.toISOString().slice(0, 10);\nconst dayName = today.toLocaleDateString('ar-EG', { weekday: 'long' });\n\nconst combinedText = `(ملحوظة للنظام: تاريخ النهاردة الحقيقي هو ${todayStr} - ${dayName})\\n\\n` +\n  (caption\n    ? `وصف الصورة: ${description}\\n\\nتعليق العميل على الصورة: \"${caption}\"`\n    : description);\n\nreturn [{\n  json: {\n    message: {\n      chat: { id: chatId },\n      text: combinedText\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        2320
+      ],
+      "id": "70e19d38-b697-4785-a5c9-3d2d82ea60de",
+      "name": "Normalize photo Text"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9b2f67d8-fd24-4f0b-8956-3be97641774f",
+              "leftValue": "={{ $json.message.chat.id }}",
+              "rightValue": "YOUR_OWNER_PHONE_NUMBER",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1040,
+        2448
+      ],
+      "id": "a61967a0-9918-438c-b203-98d860150bc1",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.photo }}",
+                    "rightValue": "={{ $json.message.photo }}",
+                    "operator": {
+                      "type": "array",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "id": "16071e77-3b64-413f-94c5-a4ed96083592"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "photo"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f7a23cf2-fd0e-45a6-9b5f-a63a1da6f1f4",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "={{ $json.message.text }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "text"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1104,
+        1712
+      ],
+      "id": "fe866bb2-eb6f-400a-9767-d3232fbfc35d",
+      "name": "Switch2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const binary = items[i].binary && items[i].binary.data;\n  if (!binary) {\n    throw new Error('No binary audio data found on this item.');\n  }\n  const buffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n  results.push({\n    json: {\n      audio_base64: buffer.toString('base64'),\n      chat_id: $('WhatsApp Normalizer').item.json.message.chat.id\n    }\n  });\n}\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        1504
+      ],
+      "id": "d5d9e4f7-9ee1-4228-ac37-8ee9f4494c0a",
+      "name": "Extract Base64 Audio2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [ { parts: [ { text: \"This image was sent by the restaurant OWNER/MANAGER (admin), not a customer, via a management chat. Write a short description (2-4 sentences) of what the image shows, in Egyptian Arabic dialect, focusing on anything relevant to running the restaurant: a new dish or menu item, a promotional offer/poster, a price list, a receipt, or any visible text (transcribe important names, prices, and dates if present). Write the description as if it were the manager's own instruction stating what he wants done (e.g. add this new item, add this offer, update this price), so another system can understand his intent and act on it. Return ONLY the description, with no extra commentary.\" }, { inline_data: { mime_type: \"image/jpeg\", data: $json.audio_base64 } } ] } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -416,
+        1632
+      ],
+      "id": "d94a36cd-9d6f-4c2b-b9d6-81aec6ab2f3a",
+      "name": "Transcribe with Gemini2",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('WhatsApp Normalizer').first().json.message.chat.id;\nconst candidate = $json.candidates && $json.candidates[0];\nconst part = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];\nconst description = (part && part.text) ? part.text.trim() : '';\n\nconst caption = $('WhatsApp Normalizer').first().json.message.caption || '';\n\nconst photoArr = $('WhatsApp Normalizer').first().json.message.photo;\nconst fileId = (photoArr && photoArr.length) ? photoArr[photoArr.length - 1].file_id : '';\n\nconst today = new Date();\nconst todayStr = today.toISOString().slice(0, 10); // YYYY-MM-DD\nconst dayName = today.toLocaleDateString('ar-EG', { weekday: 'long' });\n\nconst fileIdNote = fileId\n  ? `\\n(ملحوظة للنظام - لا تعرض هذا السطر للمستخدم أبدًا: معرف الصورة الداخلي هو \"${fileId}\" - احتفظ به في ذاكرتك، وعند استدعاء Save Offer لهذا العرض لاحقًا (حتى لو بعد عدة رسائل)، مرره بالحرف الواحد كقيمة telegram_file_id)`\n  : '';\n\nconst combinedText = `(ملحوظة للنظام: تاريخ النهاردة الحقيقي هو ${todayStr} - ${dayName})\\n\\n` +\n  (caption\n    ? `وصف الصورة: ${description}\\n\\nتعليق المسؤول على الصورة: \"${caption}\"`\n    : description) + fileIdNote;\n\nreturn [{\n  json: {\n    message: {\n      chat: { id: chatId },\n      text: combinedText\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        1680
+      ],
+      "id": "924ce365-61e7-4315-a1bd-e5e653a142df",
+      "name": "Normalize photo Text1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "options": {
+          "systemMessage": "Today's date is {{ $now.format('yyyy-MM-dd') }} ({{ $now.format('EEEE') }}).\n\nCRITICAL RULES FOR OFFERS:\n1. NEVER write a literal phrase like \"unspecified\", \"end of this month\", or \"غير محدد\" into the expiry_date field. expiry_date must ALWAYS be a real calendar date in YYYY-MM-DD format, calculated using today's date above as the reference point.\n2. Do NOT call \"Save Offer\" until you have ALL required fields confirmed: offer_name, description, price, AND a resolved expiry_date. If the expiry date is missing, ask for it first and wait for the reply — do not save an incomplete offer.\n3. If you already asked for a missing detail (like expiry_date) about an offer in this same conversation and the manager just replied with it, do NOT call \"Save Offer\" again — the offer was never saved in the first place, so calculate the final expiry_date and call \"Save Offer\" ONCE with the complete data.\n4. Only use \"Update Offer\" for offers that were already fully saved before (e.g. extending an already-active offer, or changing its price/status later).\n\nYou are an assistant for the restaurant OWNER/MANAGER. You are talking to staff, not a customer — be efficient, clear, and professional, but still warm.\n\nYou can help with FOUR things:\n\n1. UPDATE MENU PRICES/ITEMS\n   - Use \"Search Menu\" first to find the exact item and confirm current price before changing anything.\n   - Use \"Update Menu Item\" to apply the change (price, name, or description).\n   - Always confirm back clearly what was changed (old price → new price).\n   - Never guess an item — if unsure which item they mean, ask for clarification.\n\n2. MANAGE OFFERS (promotions)\n   - Adding a new offer: the manager may send a PHOTO with a caption describing it, OR just describe it in plain text (name, what's included, price, how long it should run). Either way, use \"Save Offer\" to record it with status = \"active\". If no end date is given, ask for one.\n   - Removing/ending an offer: use \"Search Offers\" to find it by name, then \"Update Offer\" to set its status to \"removed\". Confirm which offer was removed.\n   - If the manager asks what offers are currently active, use \"Search Offers\" and list them clearly (name, price, expiry date).\n\n3. SALES REPORTS\n   - Use \"Get_Sales_Report\" to retrieve a real, accurately-calculated report: number of orders, total revenue, and best-selling item.\n   - Pass period = \"today\" (default), \"yesterday\", or \"week\" based on what the manager asks for. If they ask for something else (e.g. a custom date range), tell them only today/yesterday/week are currently supported.\n   - Present numbers clearly and briefly — this is a business report, not a chat.\n\n4. GENERAL QUESTIONS / CASUAL CONVERSATION\n   - Anything else (greetings, questions about how the system works, general chat) — respond naturally and helpfully.\n\nRULES:\n- Always confirm destructive or financial actions (price changes, removing offers) briefly before/after executing — a short confirmation message is enough, no need for a yes/no approval step unless the request is ambiguous.\n- Never fabricate menu items, prices, or order data — always verify using the tools.\n- Reply in the same language/dialect the manager used.\n- Keep responses concise and business-like — this is a staff tool, not a customer-facing chat.\n\nIMPORTANT ABOUT OFFER PHOTOS: if a message contains a hidden system note with an internal photo identifier (labeled 'معرف الصورة الداخلي'), remember that exact value across the rest of this conversation (even across several messages), and when you eventually call \"Save Offer\" for that same offer, pass it as the telegram_file_id parameter exactly as given, character for character. Never invent or guess this value, and never show it to the manager."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -48,
+        1824
+      ],
+      "id": "165385ba-8d6a-4d0a-8c29-ca042a8fffed",
+      "name": "AI Agent (Classifier)1",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('WhatsApp Normalizer').item.json.message.chat.id }}",
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        160,
+        1600
+      ],
+      "id": "c6ff33a6-73f1-4bb5-b989-75ea72925b9e",
+      "name": "Simple Memory (Classifier)1"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-flash-lite-latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -96,
+        1552
+      ],
+      "id": "c4dcd055-6f59-4e88-9571-4673fd1e806b",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to look up menu items, prices, and descriptions. Search by item name or category keyword.",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "الورقة1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        160,
+        2048
+      ],
+      "id": "9b7554cc-e6a5-4879-9807-f3eb55f7673d",
+      "name": "Search Menu1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to update an existing menu item's price only. Provide the exact current item name (to find the row) and the new price. This tool cannot rename items or edit their description — for that, edit the spreadsheet directly.",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "الورقة1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('name__using_to_match_', ``, 'string') }}",
+            "price": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('price', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "name"
+          ],
+          "schema": [
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "price",
+              "displayName": "price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -176,
+        2032
+      ],
+      "id": "315c293b-a7f2-412d-9f22-ecd0fe6a73de",
+      "name": "Update Menu Item",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to save a new promotional offer. Provide offer_id, offer_name, description, price, expiry_date (always ask the manager for an end date if not given), and telegram_file_id if a photo was involved (look for a system note in the conversation containing 'معرف الصورة الداخلي' and pass that exact value; leave empty for text-only offers).",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114107268,
+          "mode": "list",
+          "cachedResultName": "الورقة3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1114107268"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "offer_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('offer_id', ``, 'string') }}",
+            "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description', ``, 'string') }}",
+            "price": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('price', ``, 'string') }}",
+            "telegram_file_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('telegram_file_id', ``, 'string') }}",
+            "expiry_date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('expiry_date', ``, 'string') }}",
+            "offer_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('offer_name', ``, 'string') }}",
+            "status": "active"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "offer_id",
+              "displayName": "offer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "offer_name",
+              "displayName": "offer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "price",
+              "displayName": "price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "expiry_date",
+              "displayName": "expiry_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "telegram_file_id",
+              "displayName": "telegram_file_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        -16,
+        2048
+      ],
+      "id": "328c9972-0eb6-422e-9eec-f0a7d559389d",
+      "name": "Save Offer",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to retrieve all offers (active and removed) from the sheet. Use it to find a specific offer by name, check its current status/expiry, or list all currently active offers.",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114107268,
+          "mode": "list",
+          "cachedResultName": "الورقة3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1114107268"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        -384,
+        2048
+      ],
+      "id": "1d875e39-b32c-4ecf-85f8-95f6b6843b65",
+      "name": "Search Offer",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to end/remove an existing offer. Provide the exact offer_name to match it — this will set its status to \"removed\". Use \"Search Offer\" first to confirm the offer exists.",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114107268,
+          "mode": "list",
+          "cachedResultName": "الورقة3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1114107268"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "offer_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('offer_name__using_to_match_', ``, 'string') }}",
+            "status": "removed"
+          },
+          "matchingColumns": [
+            "offer_name"
+          ],
+          "schema": [
+            {
+              "id": "offer_id",
+              "displayName": "offer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "offer_name",
+              "displayName": "offer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "price",
+              "displayName": "price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "expiry_date",
+              "displayName": "expiry_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "telegram_file_id",
+              "displayName": "telegram_file_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        -512,
+        2000
+      ],
+      "id": "c757cd0a-6c7b-4659-af84-9ef247e958ac",
+      "name": "Update Offer",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "=YOUR_OWNER_PHONE_NUMBER",
+        "textBody": "={{ $json.output }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        496,
+        1792
+      ],
+      "id": "1698cb46-ce34-4e1b-9a7c-4ebd2cb3d2a2",
+      "name": "Send a text message2",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "   Use this tool to get a real sales report calculated from actual order data. Pass a 'period' parameter with one of these exact values: \"today\", \"yesterday\", or \"week\". Defaults to today if not specified.",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GET_SALES_REPORT_WORKFLOW_ID",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/REPLACE_WITH_GET_SALES_REPORT_WORKFLOW_ID",
+          "cachedResultName": "Get_Sales_Report"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "period": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('period', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "period"
+          ],
+          "schema": [
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        352,
+        2032
+      ],
+      "id": "a9ca3f73-4494-4eb0-9943-c5d157f26d66",
+      "name": "Call 'Get_Sales_Report'"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "YOUR_CASHIER_PHONE_NUMBER",
+        "textBody": "==🔔 أوردر جديد!\n\nالاسم: {{$json.customer_name}}\nالعنوان: {{ $json.delivery_address }}\nالتليفون: {{ $json.customer_phone }}\nالأصناف: {{ $json.items }}\nالإجمالي: {{ $json.total_price }} جنيه",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2112,
+        2096
+      ],
+      "id": "259ce5a6-ae6d-4acd-8c28-8f76a55d1aea",
+      "name": "كاشير",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this to check current active promotional offers when a customer asks about deals or discounts. Only show offers where status is 'active' and expiry_date hasn't passed",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114107268,
+          "mode": "list",
+          "cachedResultName": "الورقة3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1114107268"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        1536,
+        1664
+      ],
+      "id": "0b103244-49dc-48a7-bf4b-41bb34d3a429",
+      "name": "Search  offer",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        2848
+      ],
+      "id": "bf988b0a-fbbb-4589-9844-04956a8494f8",
+      "name": "WhatsApp Trigger",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp OAuth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = ($json.messages && $json.messages[0]) || null;\nconst contact = ($json.contacts && $json.contacts[0]) || null;\n\nif (!msg) {\n  // Not an incoming message event (e.g. a status update webhook) - stop this branch.\n  return [];\n}\n\nconst chatId = msg.from;\nconst type = msg.type;\n\nlet text = '';\nlet photo = null;\nlet voice = null;\nlet caption = '';\n\nif (type === 'text') {\n  text = (msg.text && msg.text.body) || '';\n} else if (type === 'image') {\n  photo = [{ file_id: msg.image && msg.image.id }];\n  caption = (msg.image && msg.image.caption) || '';\n} else if (type === 'audio') {\n  voice = { file_id: msg.audio && msg.audio.id };\n}\n\nreturn [{\n  json: {\n    message: {\n      chat: { id: chatId },\n      text: text,\n      photo: photo,\n      voice: voice,\n      caption: caption,\n      from: { first_name: (contact && contact.profile && contact.profile.name) || '' }\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1344,
+        2480
+      ],
+      "id": "be43053c-f1ce-41b0-aea5-815063bd7112",
+      "name": "WhatsApp Normalizer"
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.message.photo[$json.message.photo.length - 1].file_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -832,
+        2256
+      ],
+      "id": "c381abd6-e79e-43e5-93d2-e631e8c28d24",
+      "name": "Get Photo URL",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -384,
+        2224
+      ],
+      "id": "2e847fb3-8cbd-4ef6-83ed-9bc107420f13",
+      "name": "Download Photo",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.message.voice.file_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        2640
+      ],
+      "id": "46de43ea-6dfb-4189-9cad-e631e22c4590",
+      "name": "Get Voice File URL",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        464,
+        2864
+      ],
+      "id": "c9567e86-7003-49da-a60d-30d76e98c954",
+      "name": "Download Voice File",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.message.photo[$json.message.photo.length - 1].file_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -992,
+        1568
+      ],
+      "id": "81bddb46-b64c-4eed-86f1-1e3e871a3341",
+      "name": "Get Owner Photo URL",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -688,
+        1616
+      ],
+      "id": "07834731-bb38-43fd-81d8-7dd443e264e5",
+      "name": "Download Owner Photo",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Simple Memory (Classifier)": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent (Classifier)",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (Classifier)": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "order prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "cancel_modify prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "questions/general prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "questions/general prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "order prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cancel_modify prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "questions/general prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory (Main)": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Menu": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Order": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Order": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Order": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (Main)": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "كاشير",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (Classifier)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Base64 Audio": {
+      "main": [
+        [
+          {
+            "node": "Transcribe with Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe with Gemini": {
+      "main": [
+        [
+          {
+            "node": "Normalize Voice Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Voice Text": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Classifier)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Get Photo URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent (Classifier)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Voice File URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Base64 Audio1": {
+      "main": [
+        [
+          {
+            "node": "Transcribe with Gemini1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe with Gemini1": {
+      "main": [
+        [
+          {
+            "node": "Normalize photo Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize photo Text": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Classifier)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Switch2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Base64 Audio2": {
+      "main": [
+        [
+          {
+            "node": "Transcribe with Gemini2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe with Gemini2": {
+      "main": [
+        [
+          {
+            "node": "Normalize photo Text1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch2": {
+      "main": [
+        [
+          {
+            "node": "Get Owner Photo URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory (Classifier)1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize photo Text1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Menu1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Menu Item": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Offer": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Offer": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Offer": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (Classifier)1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Get_Sales_Report'": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Classifier)1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search  offer": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Main)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Normalizer": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Photo URL": {
+      "main": [
+        [
+          {
+            "node": "Download Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Photo": {
+      "main": [
+        [
+          {
+            "node": "Extract Base64 Audio1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Voice File URL": {
+      "main": [
+        [
+          {
+            "node": "Download Voice File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Voice File": {
+      "main": [
+        [
+          {
+            "node": "Extract Base64 Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Owner Photo URL": {
+      "main": [
+        [
+          {
+            "node": "Download Owner Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Owner Photo": {
+      "main": [
+        [
+          {
+            "node": "Extract Base64 Audio2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}
